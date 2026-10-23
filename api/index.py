@@ -3,22 +3,32 @@ import json
 import logging
 import os
 import re
+import time
+from typing import Literal
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from ollama import AsyncClient
 from pydantic import BaseModel, Field
 
 load_dotenv()
+logging.basicConfig(level=logging.INFO)
 MODEL = os.getenv("OLLAMA_MODEL")
 API_KEY = os.getenv("OLLAMA_API_KEY")
 logger = logging.getLogger("opportunitycheck")
 
+MODEL_TIMEOUT = 45  # seconds to wait for the AI model
+RATE_LIMIT = int(os.getenv("RATE_LIMIT_PER_MIN", "10"))  # requests per IP per minute
+
 app = FastAPI(title="OpportunityCheck API")
 
-origins = ["http://127.0.0.1:5500", "http://localhost:5500", "http://127.0.0.1:5501",
-           "http://localhost:5501", "http://127.0.0.1:8080", "http://localhost:8080", "null"]
+origins = [
+    "http://127.0.0.1:5500", "http://localhost:5500",
+    "http://127.0.0.1:5501", "http://localhost:5501",
+    "http://127.0.0.1:8080", "http://localhost:8080",
+    "https://opportunity-checker-m36y.vercel.app",
+]
 origins += [o.strip().rstrip("/") for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=False,
@@ -31,13 +41,13 @@ client = AsyncClient(host="https://ollama.com", headers={"Authorization": f"Bear
 
 class AnalyzeRequest(BaseModel):
     text: str = Field(min_length=1, max_length=6000)
-    field: str = ""
-    level: str = ""
-    kind: str = "Any type"
+    field: str = Field(default="", max_length=100)
+    level: str = Field(default="", max_length=100)
+    kind: str = Field(default="Any type", max_length=100)
 
 
 class ChatMessage(BaseModel):
-    role: str
+    role: Literal["user", "assistant"]
     content: str = Field(max_length=3000)
 
 
@@ -45,14 +55,14 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=3000)
     post: str = Field(default="", max_length=6000)
     summary: str = Field(default="", max_length=1500)
-    field: str = ""
-    level: str = ""
-    asked: str = ""
-    trust_level: str = ""
-    verdict: str = ""
-    red_flags: list[str] = []
-    answered: list[str] = []
-    conversation_history: list[ChatMessage] = []
+    field: str = Field(default="", max_length=100)
+    level: str = Field(default="", max_length=100)
+    asked: str = Field(default="", max_length=300)
+    trust_level: str = Field(default="", max_length=30)
+    verdict: str = Field(default="", max_length=30)
+    red_flags: list[str] = Field(default_factory=list, max_length=20)
+    answered: list[str] = Field(default_factory=list, max_length=30)
+    conversation_history: list[ChatMessage] = Field(default_factory=list, max_length=30)
 
 
 # ---------- small helpers ----------
@@ -96,10 +106,38 @@ def as_choice(v, allowed, default):
     return v if v in allowed else default
 
 
+# ---------- rate limit: simple per-IP limit, no extra package needed ----------
+
+hits = {}
+RATE_WINDOW = 60  # seconds
+
+
+def client_ip(request: Request):
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def rate_limit(request: Request):
+    now = time.monotonic()
+    ip = client_ip(request)
+    recent = [t for t in hits.get(ip, []) if now - t < RATE_WINDOW]
+    if len(recent) >= RATE_LIMIT:
+        hits[ip] = recent
+        raise HTTPException(429, "Too many requests. Please wait a minute and try again.")
+    recent.append(now)
+    hits[ip] = recent
+    if len(hits) > 5000:  # clean up old IPs so memory does not grow forever
+        for k in [k for k, v in hits.items() if not v or now - v[-1] >= RATE_WINDOW]:
+            del hits[k]
+
+
 # ---------- rule layer: simple keyword checks that run before the AI ----------
 
-# Posts that ask for money are treated as scams.
-FEE_WORDS = ["registration fee", "processing fee", "application fee", "admission fee", "pay a fee", "pay to secure"]
+# Posts that ask for money up front are treated as scams.
+FEE_WORDS = ["registration fee", "processing fee", "admission fee", "pay a fee", "pay to secure",
+             "security deposit", "refundable deposit"]
 # If the post says one of these, it is NOT asking for money.
 NO_FEE_WORDS = ["no fee", "no fees", "no registration fee", "no application fee", "without any fee",
                 "free of charge", "fee: none", "fee: nil", "fee: free", "fee: 0", "fee: no"]
@@ -122,6 +160,9 @@ def run_rules(text: str):
         low = low.replace(ok, "")
     asks_for_money = any(w in low for w in FEE_WORDS)
     warnings = ["Asks for a fee before selection"] if asks_for_money else []
+    # a plain "application fee" is common in real programs: warn, but do not auto-flag as scam
+    if not asks_for_money and "application fee" in low:
+        warnings.append("Mentions an application fee - confirm it on the official website")
     for words, message in WARNINGS:
         if any(w in low for w in words):
             warnings.append(message)
@@ -167,12 +208,12 @@ async def search(query: str):
                             "snippet": " ".join(str(get("content") or "").split())[:400]})
         return out
     except Exception:
-        logger.warning("Web search failed for %r", query)
+        logger.warning("Web search failed for %r", query, exc_info=True)
         return []
 
 
 async def web_evidence(text: str):
-    short = text[:90]
+    short = " ".join(text.split())[:90]  # one line, no extra spaces or newlines
     queries = [f"{short} scam", f"{short} official website"]
     batches = await asyncio.gather(*(safe(search(q), 12, []) for q in queries))
     seen, results = set(), []
@@ -270,6 +311,12 @@ def clean_result(a, sources, warnings, asks_for_money):
     if not sources and r["trust_level"] == "trustworthy":
         r["trust_level"] = "verify"  # no web proof = never fully trusted
 
+    # score and level must agree
+    if r["trust_level"] == "scam":
+        r["trust_score"] = min(r["trust_score"], 30)
+    elif r["trust_level"] == "trustworthy" and r["trust_score"] < 60:
+        r["trust_level"] = "verify"
+
     # verdict must match trust
     if r["trust_level"] == "scam":
         r["verdict"] = "skip"
@@ -289,7 +336,7 @@ def health():
 
 
 @app.post("/api/analyze")
-async def analyze(data: AnalyzeRequest):
+async def analyze(data: AnalyzeRequest, request: Request):
     check_config()
     if len(data.text.strip()) < 20:
         raise HTTPException(400, "Text is too short.")
@@ -297,6 +344,8 @@ async def analyze(data: AnalyzeRequest):
     key = cache_key(data)
     if key in cache:
         return {**cache[key], "cached": True}
+
+    rate_limit(request)  # only real AI calls count toward the limit
 
     warnings, asks_for_money = run_rules(data.text)
     sources = await web_evidence(data.text)
@@ -336,19 +385,22 @@ Rules:
 - Reply in the same language as the post. Keep the JSON keys in English.
 - Say "you", never "the student".
 - Never invent names, links, deadlines or contact details.
-- Give 3 to  4 items for red_flags, green_flags, verify_steps and next_steps (empty list if none).
-- Give   4 missing_info questions that would change your advice, and 4 topics of   6 words.
+- Give 3 to 4 items for red_flags, green_flags, verify_steps and next_steps (empty list if none).
+- Give up to 4 missing_info questions that would change your advice, and up to 4 topics of at most 6 words each.
 - Keep every item short for a mobile screen.
 """
 
     try:
-        response = await client.chat(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": "Return only a valid JSON object. Be cautious: students lose money to fake opportunities."},
-                {"role": "user", "content": prompt},
-            ],
-            format="json",
+        response = await asyncio.wait_for(
+            client.chat(
+                model=MODEL,
+                messages=[
+                    {"role": "system", "content": "Return only a valid JSON object. Be cautious: students lose money to fake opportunities."},
+                    {"role": "user", "content": prompt},
+                ],
+                format="json",
+            ),
+            MODEL_TIMEOUT,
         )
         raw = read_json(response.message.content or "")
     except Exception:
@@ -356,7 +408,8 @@ Rules:
         raise HTTPException(502, "The AI check failed. Please try again.")
 
     result = clean_result(raw, sources, warnings, asks_for_money)
-    cache_put(key, result)
+    if sources:  # do not cache answers made without web evidence (search may have failed)
+        cache_put(key, result)
     return {**result, "cached": False}
 
 
@@ -379,8 +432,8 @@ Rules:
 - Say when something must be confirmed on the official website.
 """
 
-# For likely scams we remove any reply line that mentions these...
-RISKY_WORDS = ["pay", "payment", "fee", "passport", "whatsapp", "transfer"]
+# For likely scams we remove any reply line that mentions these whole words...
+RISKY = re.compile(r"\b(pay|payment|fee|fees|passport|whatsapp|transfer)\b", re.IGNORECASE)
 # ...unless the line is itself a warning.
 WARNING_STARTS = ("do not", "don't", "never", "- do not", "- don't", "- never", "avoid", "- avoid")
 
@@ -388,12 +441,11 @@ WARNING_STARTS = ("do not", "don't", "never", "- do not", "- don't", "- never", 
 def scam_guard(reply: str, trust_level: str):
     if trust_level != "scam":
         return reply
-    lines = reply.splitlines()
     safe_lines = []
     removed = False
-    for ln in lines:
+    for ln in reply.splitlines():
         low = ln.strip().lower()
-        if any(w in low for w in RISKY_WORDS) and not low.startswith(WARNING_STARTS):
+        if RISKY.search(low) and not low.startswith(WARNING_STARTS):
             removed = True
         else:
             safe_lines.append(ln)
@@ -403,13 +455,13 @@ def scam_guard(reply: str, trust_level: str):
 
 
 @app.post("/api/chat")
-async def chat(data: ChatRequest):
+async def chat(data: ChatRequest, request: Request):
     check_config()
+    rate_limit(request)
 
     messages = [{"role": "system", "content": CHAT_SYSTEM}]
     for m in data.conversation_history[-10:]:
-        if m.role in ("user", "assistant"):
-            messages.append({"role": m.role, "content": m.content})
+        messages.append({"role": m.role, "content": m.content})
 
     answered = "\n".join(f"- {q}" for q in data.answered[-10:]) or "none"
     flags = "\n".join(f"- {f}" for f in data.red_flags[:8]) or "none"
@@ -427,7 +479,10 @@ async def chat(data: ChatRequest):
     )})
 
     try:
-        response = await client.chat(model=MODEL, messages=messages, format="json")
+        response = await asyncio.wait_for(
+            client.chat(model=MODEL, messages=messages, format="json"),
+            MODEL_TIMEOUT,
+        )
         content = (response.message.content or "").strip()
         try:
             raw = read_json(content)
