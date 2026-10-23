@@ -1,5 +1,5 @@
 :root{color-scheme:dark;--bg:#0c0626;--bg2:#160d3d;--surface:#1b1150;--surface2:#2a1a78;--line:#4a39b0;--text:#f7f5ff;--muted:#c3bbf0;--accent:#8b7bff;--accent2:#ff5fa8;--accent3:#22d3ee;--grad:linear-gradient(135deg,#7c6cff 0%,#c24bff 55%,#ff5fa8 100%);--accent-soft:rgba(139,123,255,.24);--glow:rgba(160,110,255,.45);--low:#2de2a6;--mid:#ffc83d;--high:#ff6b7a}
-@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){color-scheme:light;--bg:#f6f5ff;--bg2:#ecebff;--surface:#fff;--surface2:#f1efff;--line:#d9d6fb;--text:#14123a;--muted:#5d5f8f;--accent:#5b46f0;--accent-soft:rgba(91,70,240,.12);--glow:rgba(124,108,255,.28);--low:#059669;--mid:#b45309;--high:#dc2646}}
+/* dark is the default on every device (desktop and phone); set data-theme="light" on :root to force light */
 :root[data-theme="light"]{color-scheme:light;--bg:#f6f5ff;--bg2:#ecebff;--surface:#fff;--surface2:#f1efff;--line:#d9d6fb;--text:#14123a;--muted:#5d5f8f;--accent:#5b46f0;--accent-soft:rgba(91,70,240,.12);--glow:rgba(124,108,255,.28);--low:#059669;--mid:#b45309;--high:#dc2646}
 *{box-sizing:border-box;margin:0}
 [hidden]{display:none!important}
@@ -120,5 +120,29 @@ textarea::placeholder{color:var(--muted)}
 .fbox button:hover{filter:brightness(1.1)}
 .fbox button:disabled{opacity:.5;cursor:wait}
 
-@media (max-width:560px){.ctx-grid{grid-template-columns:1fr 1fr}.ctx-grid input{grid-column:1/-1}.three,.risk{display:none}.examples{grid-template-columns:1fr}}
+/* mobile: compact composer, visible pills, swipeable examples, 44px touch targets */
+@media (max-width:560px){
+.topbar{padding:10px 16px}
+.ghost{padding:0 16px;min-height:44px}
+main{padding:16px 0 20px}
+.hero-mark{width:44px;height:44px;font-size:22px;margin-bottom:8px}
+h1{font-size:24px}
+.welcome>p{font-size:14px}
+.risk{display:flex;gap:6px;margin-top:12px}
+.chip{font-size:12px;padding:6px 8px;gap:5px;white-space:nowrap}
+.three{display:grid;gap:8px;margin-top:12px}
+.three div{padding:10px 8px;text-align:center}
+.three b{margin:0;font-size:13px}
+.three span{display:none}
+.examples{grid-template-columns:1fr;gap:8px;margin-top:12px}
+.ex{padding:10px 14px}
+.composer-wrap{padding:10px 0 6px}
+.ctx-grid{grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px}
+.ctx-grid input{grid-column:auto}
+.ctx-grid input,.ctx-grid select{font-size:12.5px;padding:0 6px;min-height:44px}
+.send{width:44px;height:44px}
+.composer-wrap .note{font-size:12px;margin-top:6px}
+.qb,.tp{padding:12px 14px}
+.fbox button{width:44px;height:44px}
+}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
