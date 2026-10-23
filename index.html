@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>OpportunityCheck – UI demo</title>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<title>OpportunityCheck</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -42,14 +42,21 @@
 <footer class="composer-wrap">
   <div class="col">
     <div class="ctx-grid">
-      <input type="text" id="field" value="Computer Science" placeholder="Your field of study" arial="Your field of study" />
+      <input type="text" id="field" value="Computer Science" placeholder="Your field of study" aria-label="Your field of study" />
       <select id="level" aria-label="Your level"><option>Undergraduate</option><option>Masters</option><option>Fresh graduate</option></select>
       <select id="kind" aria-label="Looking for"><option>Any type</option><option>Scholarship</option><option>Internship</option><option>Job</option><option>Training</option></select>
     </div>
+
     <div class="box">
       <textarea id="desc" rows="2" placeholder="Paste the announcement text or describe the opportunity..."></textarea>
+
+      <label for="imageInput" class="send" aria-label="Attach image" title="Upload an opportunity image"><span aria-hidden="true">📎</span></label>
+      <input type="file" id="imageInput" accept="image/png,image/jpeg,image/webp" hidden />
+
       <button type="button" class="send" id="go" aria-label="Check opportunity">↑</button>
     </div>
+    <p id="imageName" class="note" hidden></p>
+
     <p class="note">AI checks can be wrong, so always confirm on the official website and never pay to apply.</p>
   </div>
 </footer>

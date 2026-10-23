@@ -2,21 +2,41 @@
   // local testing uses your own computer; the deployed site uses your hosted backend
   var LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
   var BASE = LOCAL ? 'http://localhost:8000' : '';  // on Vercel the API lives on the same site
-  var API = BASE + '/api/analyze', CHAT = BASE + '/api/chat';
+  var API = BASE + '/api/analyze', CHAT = BASE + '/api/chat', IMG_API = BASE + '/api/analyze-image';
   var $ = function(i){return document.getElementById(i)};
   var d=$('desc'), res=$('result'), wel=$('welcome'), go=$('go');
+  var imageInput=$('imageInput'), imageName=$('imageName');
   var S = null;        // state of the current check + conversation
   var timers = [];
   var mainEl = document.querySelector('main');   // the results area scrolls, not the page
 
   document.querySelectorAll('.ex').forEach(function(e){e.addEventListener('click',function(){d.value=e.dataset.t;d.focus()})});
-  $('reset').addEventListener('click',function(){S=null;clearTimers();res.hidden=true;res.innerHTML='';wel.hidden=false;d.value='';go.disabled=false;mainEl.scrollTop=0});
+  $('reset').addEventListener('click',function(){S=null;clearTimers();clearImage();res.hidden=true;res.innerHTML='';wel.hidden=false;d.value='';go.disabled=false;mainEl.scrollTop=0});
   d.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();run()}});
   go.addEventListener('click',run);
 
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   var COLOR={trustworthy:'var(--low)',verify:'var(--mid)',scam:'var(--high)',strong:'var(--low)',moderate:'var(--mid)',weak:'var(--high)',apply:'var(--low)',verify_then_apply:'var(--mid)',skip:'var(--high)'};
   var LABEL={trustworthy:'Looks trustworthy',verify:'Verify first',scam:'Likely scam',strong:'Strong',moderate:'Moderate',weak:'Weak',apply:'Apply',verify_then_apply:'Apply after verifying',skip:'Skip'};
+
+  // ---------- image attachment ----------
+  function clearImage(){
+    imageInput.value='';
+    imageName.hidden=true;
+    imageName.textContent='';
+  }
+
+  imageInput.addEventListener('change',function(){
+    var f=imageInput.files[0];
+    if(!f){clearImage();return}
+    if(f.size>8*1024*1024){
+      clearImage();
+      alert('Image must be smaller than 8 MB.');
+      return;
+    }
+    imageName.textContent='Attached: '+f.name;
+    imageName.hidden=false;
+  });
 
   // ---------- small render helpers (all take RAW text; escaping happens inside) ----------
   // an item is {t: text, k: 'bad' | 'good' | 'note' | ''}
@@ -54,14 +74,18 @@
     var m=j&&(j.detail||j.error);
     return typeof m==='string'&&m?m:'Request failed';
   }
+  function handle(r){
+    return r.json().catch(function(){return {}}).then(function(j){
+      if(!r.ok) throw new Error(errText(r.status,j));
+      return j;
+    });
+  }
   function post(url,body){
-    return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
-      .then(function(r){
-        return r.json().catch(function(){return {}}).then(function(j){
-          if(!r.ok) throw new Error(errText(r.status,j));
-          return j;
-        });
-      });
+    return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(handle);
+  }
+  // multipart upload (the browser sets the Content-Type boundary itself)
+  function postForm(url,form){
+    return fetch(url,{method:'POST',body:form}).then(handle);
   }
 
   // ---------- result rendering ----------
@@ -237,26 +261,46 @@
     });
   }
 
-  // ---------- main check ----------
+  // ---------- main check (text or image) ----------
   function clearTimers(){timers.forEach(clearTimeout);timers=[]}
   function stage(t){var el=$('ldt'); if(el) el.textContent=t}
 
   function run(){
-    var t=d.value.trim(); if(t.length<20){d.focus();return}
+    var t=d.value.trim();
+    var file=imageInput.files[0];
+    if(!file && t.length<20){d.focus();return}
     if(go.disabled) return;
+
+    var shown=t||('📎 '+file.name);
     wel.hidden=true; res.hidden=false; go.disabled=true; S=null; clearTimers();
-    res.innerHTML='<div class="msg">'+esc(t)+'</div><div class="loading" role="status"><span class="spin"></span><span id="ldt">Searching the web…</span></div>';
+    res.innerHTML='<div class="msg">'+esc(shown)+'</div><div class="loading" role="status"><span class="spin"></span><span id="ldt">'+(file?'Reading the image…':'Searching the web…')+'</span></div>';
     timers.push(setTimeout(function(){stage('Reading the results and judging trust…')},6000));
     timers.push(setTimeout(function(){stage('Almost done…')},14000));
     mainEl.scrollTop=0;
-    post(API,{text:t,field:$('field').value,level:$('level').value,kind:$('kind').value})
-    .then(function(j){
-      S={text:t,result:j,summary:summaryOf(j),history:[],answered:[],shown:[],asked:'',busy:false};
-      render(t,j);d.value='';
+
+    var req;
+    if(file){
+      var fd=new FormData();
+      fd.append('image',file);
+      fd.append('text',t);
+      fd.append('field',$('field').value);
+      fd.append('level',$('level').value);
+      fd.append('kind',$('kind').value);
+      req=postForm(IMG_API,fd);
+    }else{
+      req=post(API,{text:t,field:$('field').value,level:$('level').value,kind:$('kind').value});
+    }
+
+    req.then(function(j){
+      // for image checks the backend returns the text it read from the image
+      var postText=j.extracted_text||t;
+      S={text:postText,result:j,summary:summaryOf(j),history:[],answered:[],shown:[],asked:'',busy:false};
+      render(shown,j);
+      d.value=''; clearImage();
     })
     .catch(function(e){
       var msg=e instanceof TypeError?'Cannot reach the backend at '+BASE+'. '+(LOCAL?'Start it with: python -m uvicorn main:app --reload':'It may be waking up or offline. Please try again in a minute.'):e.message;
-      res.innerHTML='<div class="msg">'+esc(t)+'</div><div class="verdict" style="--vc:var(--high)"><small>Error</small><h2>Could not check</h2><p>'+esc(msg)+'</p></div>';
+      res.innerHTML='<div class="msg">'+esc(shown)+'</div><div class="verdict" style="--vc:var(--high)"><small>Error</small><h2>Could not check</h2><p>'+esc(msg)+'</p></div>';
     }).finally(function(){clearTimers();go.disabled=false});
   }
 })();

@@ -146,3 +146,7 @@ h1{font-size:24px}
 .fbox button{width:44px;height:44px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+/* attach-image button (a <label> styled like .send) */
+label.send{display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;font-size:17px}
+label.send:hover{filter:brightness(1.1)}
+#imageName{margin-top:6px;overflow-wrap:anywhere}
