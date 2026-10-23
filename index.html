@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>OpportunityCheck – UI demo</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="logo"><i aria-hidden="true">✓</i> OpportunityCheck</div>
+  <button type="button" class="ghost" id="reset">New check</button>
+</header>
+
+<main>
+  <div class="col">
+    <section class="welcome" id="welcome">
+      <div class="hero-mark" aria-hidden="true">✓</div>
+      <h1>Is this opportunity worth your time?</h1>
+      <p>Paste a scholarship, internship, job or training post. I’ll extract three things: is it trustworthy, does it fit you, and is it worth pursuing.</p>
+      <div class="risk" aria-label="Trust levels">
+        <span class="chip"><span class="dot" style="background:var(--low)"></span>Looks trustworthy</span>
+        <span class="chip"><span class="dot" style="background:var(--mid)"></span>Verify first</span>
+        <span class="chip"><span class="dot" style="background:var(--high)"></span>Likely scam</span>
+      </div>
+      <div class="three">
+        <div><b>1 · Trust</b><span>Red flags, fees, source and contact details</span></div>
+        <div><b>2 · Relevance</b><span>Match with your field, level and eligibility</span></div>
+        <div><b>3 · Worth</b><span>Benefits, deadline and effort to apply</span></div>
+      </div>
+      <div class="examples">
+        <button type="button" class="ex" data-t="Congratulations! You are selected for a fully funded scholarship abroad. Pay a registration fee of $50 and send your passport copy on WhatsApp today. Limited seats, guaranteed visa!"><b>Scholarship asking for a fee</b><span>“Guaranteed” award, pay to register, urgent</span></button>
+        <button type="button" class="ex" data-t="Software internship, 3 months. Apply on our careers page. Eligibility: 3rd year computer science students. Deadline 30 November. Unpaid, certificate provided."><b>Internship post</b><span>Real company, unpaid, clear deadline</span></button>
+        <button type="button" class="ex" data-t="Free data analysis training by the university IT department (official .edu site). Funded, stipend of 5000 BDT, certificate. Eligibility: undergraduate students. Apply by 15 December."><b>University training</b><span>Free, funded, official source</span></button>
+      </div>
+    </section>
+    <section id="result" hidden></section>
+  </div>
+</main>
+
+<footer class="composer-wrap">
+  <div class="col">
+    <div class="ctx-grid">
+      <input type="text" id="field" value="Computer Science" placeholder="Your field of study" arial="Your field of study" />
+      <select id="level" aria-label="Your level"><option>Undergraduate</option><option>Masters</option><option>Fresh graduate</option></select>
+      <select id="kind" aria-label="Looking for"><option>Any type</option><option>Scholarship</option><option>Internship</option><option>Job</option><option>Training</option></select>
+    </div>
+    <div class="box">
+      <textarea id="desc" rows="2" placeholder="Paste the announcement text or describe the opportunity..."></textarea>
+      <button type="button" class="send" id="go" aria-label="Check opportunity">↑</button>
+    </div>
+    <p class="note">AI checks can be wrong, so always confirm on the official website and never pay to apply.</p>
+  </div>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
