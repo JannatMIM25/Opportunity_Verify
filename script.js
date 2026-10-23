@@ -1,8 +1,7 @@
-
 (function(){
-   // local testing uses your own computer; the deployed site uses your hosted backend
+  // local testing uses your own computer; the deployed site uses your hosted backend
   var LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-  var BASE = LOCAL ? 'http://localhost:8000' : 'https://YOUR-BACKEND-URL';  // <-- replace YOUR-BACKEND-URL (no trailing slash)
+  var BASE = LOCAL ? 'http://localhost:8000' : '';  // on Vercel the API lives on the same site
   var API = BASE + '/api/analyze', CHAT = BASE + '/api/chat';
   var $ = function(i){return document.getElementById(i)};
   var d=$('desc'), res=$('result'), wel=$('welcome'), go=$('go');
@@ -256,7 +255,7 @@
       render(t,j);d.value='';
     })
     .catch(function(e){
-      var msg=e instanceof TypeError?'Cannot reach the backend at localhost:8000. Start it with: python -m uvicorn main:app --reload':e.message;
+      var msg=e instanceof TypeError?'Cannot reach the backend at '+BASE+'. '+(LOCAL?'Start it with: python -m uvicorn main:app --reload':'It may be waking up or offline. Please try again in a minute.'):e.message;
       res.innerHTML='<div class="msg">'+esc(t)+'</div><div class="verdict" style="--vc:var(--high)"><small>Error</small><h2>Could not check</h2><p>'+esc(msg)+'</p></div>';
     }).finally(function(){clearTimers();go.disabled=false});
   }
