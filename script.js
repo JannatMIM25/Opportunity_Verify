@@ -1,6 +1,8 @@
 
 (function(){
-  var BASE = 'http://localhost:8000';
+   // local testing uses your own computer; the deployed site uses your hosted backend
+  var LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  var BASE = LOCAL ? 'http://localhost:8000' : 'https://YOUR-BACKEND-URL';  // <-- replace YOUR-BACKEND-URL (no trailing slash)
   var API = BASE + '/api/analyze', CHAT = BASE + '/api/chat';
   var $ = function(i){return document.getElementById(i)};
   var d=$('desc'), res=$('result'), wel=$('welcome'), go=$('go');
