@@ -27,7 +27,7 @@ origins = [
     "http://127.0.0.1:5500", "http://localhost:5500",
     "http://127.0.0.1:5501", "http://localhost:5501",
     "http://127.0.0.1:8080", "http://localhost:8080",
-    "https://opportunity-verify-d51v.vercel.app",
+    "https://opportunity-verify-povf.vercel.app",
 ]
 origins += [o.strip().rstrip("/") for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 
